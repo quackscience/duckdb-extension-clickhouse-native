@@ -31,7 +31,7 @@ Read ClickHouse Native files with DuckDB. _Unoptimized full-file reading._
 D SELECT * FROM clickhouse_native('/tmp/numbers.clickhouse');
 ┌──────────────┬─────────┐
 │  version()   │ number  │
-│   varchar    │ varchar │
+│   varchar    │  int32  │
 ├──────────────┼─────────┤
 │ 24.12.1.1273 │ 0       │
 └──────────────┴─────────┘
