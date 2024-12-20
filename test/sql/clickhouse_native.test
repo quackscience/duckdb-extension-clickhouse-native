@@ -4,17 +4,17 @@
 
 # Before we load the extension, this will fail
 statement error
-SELECT rusty_quack('Sam');
+SELECT clickhouse_native('Sam');
 ----
-Catalog Error: Scalar Function with name rusty_quack does not exist!
+Catalog Error: Scalar Function with name clickhouse_native does not exist!
 
 # Require statement will ensure the extension is loaded from now on
-require rusty_quack
+require clickhouse_native
 
 require icu
 
 # Confirm the extension works
 query I
-SELECT * from rusty_quack('Sam');
+SELECT number FROM clickhouse_native('./numbers.clickhouse');
 ----
-Rusty Quack Sam 🐥
+0
