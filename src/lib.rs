@@ -101,44 +101,32 @@ fn read_column_data(reader: &mut impl Read, column_type: &ColumnType, rows: u64)
     Ok(data)
 }
 
-fn read_native_format(reader: &mut BufReader<File>) -> io::Result<Vec<Column>> {
-    let num_columns = reader.read_u8()?;
-    // eprintln!("First byte (num_columns): 0x{:02x}", num_columns);
-    
-    // Read first row count byte
-    let count_byte = reader.read_u8()?;
-    // eprintln!("First row count byte: 0x{:02x}", count_byte);
-
-    let (num_rows, rewind_needed) = if count_byte == 0xe8 {
-        // Peek at next byte for 1000-row pattern
-        let mut peek = [0u8];
-        reader.read_exact(&mut peek)?;
-        if peek[0] == 0x07 {
-            // eprintln!("Detected 1000-row pattern");
-            (1000u64, false)
-        } else {
-            // eprintln!("Using original count: {}", count_byte);
-            reader.seek(std::io::SeekFrom::Current(-1))?;
-            (count_byte as u64, false)
+fn read_var_u64(reader: &mut impl Read) -> io::Result<u64> {
+    let mut x = 0u64;
+    for i in 0..10 {
+        let byte = reader.read_u8()?;
+        x |= ((byte & 0x7F) as u64) << (7 * i);
+        if byte & 0x80 == 0 {
+            return Ok(x);
         }
-    } else {
-        // eprintln!("Using original count: {}", count_byte);
-        (count_byte as u64, true)
-    };
+    }
+    Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid VarUInt"))
+}
 
-    // eprintln!("Reading {} columns with {} rows", num_columns, num_rows);
-    
+fn read_native_format(reader: &mut BufReader<File>) -> io::Result<Vec<Column>> {
+    let num_columns = read_var_u64(reader)?;
+
+    let num_rows = read_var_u64(reader)?;
+
     let mut columns = Vec::with_capacity(num_columns as usize);
-
-    for _i in 0..num_columns {
+    for _ in 0..num_columns {
         let name = read_string(reader)?;
         let type_str = read_string(reader)?;
-        // eprintln!("Column {}: {} ({})", i, name, type_str);
         let (column_type, type_params) = parse_column_type(&type_str);
         let data = read_column_data(reader, &column_type, num_rows)?;
         columns.push(Column { name, type_: column_type, type_params, data });
     }
-    
+
     Ok(columns)
 }
 
