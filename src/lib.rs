@@ -8,6 +8,7 @@ use duckdb_loadable_macros::duckdb_entrypoint_c_api;
 use libduckdb_sys as ffi;
 use byteorder::{ReadBytesExt, LittleEndian};
 
+// All original type definitions remain exactly the same
 #[allow(dead_code)]
 #[derive(Debug)]
 enum ColumnType {
@@ -52,6 +53,7 @@ impl Free for ClickHouseInitData {
     }
 }
 
+// All original functions remain exactly the same
 fn read_string(reader: &mut impl Read) -> io::Result<String> {
     let len = reader.read_u8()?;
     let mut buffer = vec![0; len as usize];
@@ -115,16 +117,31 @@ fn read_var_u64(reader: &mut impl Read) -> io::Result<u64> {
 
 fn read_native_format(reader: &mut BufReader<File>) -> io::Result<Vec<Column>> {
     let num_columns = read_var_u64(reader)?;
+    let mut columns: Vec<Column> = Vec::new();
+    let mut is_first_block = true;
 
-    let num_rows = read_var_u64(reader)?;
+    loop {
+        let num_rows = read_var_u64(reader)?;
 
-    let mut columns = Vec::with_capacity(num_columns as usize);
-    for _ in 0..num_columns {
-        let name = read_string(reader)?;
-        let type_str = read_string(reader)?;
-        let (column_type, type_params) = parse_column_type(&type_str);
-        let data = read_column_data(reader, &column_type, num_rows)?;
-        columns.push(Column { name, type_: column_type, type_params, data });
+        if is_first_block {
+            for _ in 0..num_columns {
+                let name = read_string(reader)?;
+                let type_str = read_string(reader)?;
+                let (column_type, type_params) = parse_column_type(&type_str);
+                let data = read_column_data(reader, &column_type, num_rows)?;
+                columns.push(Column { name, type_: column_type, type_params, data });
+            }
+            is_first_block = false;
+        } else {
+            for col in &mut columns {
+                let data = read_column_data(reader, &col.type_, num_rows)?;
+                col.data.extend(data);
+            }
+        }
+
+        if num_rows < 65409 {
+            break;
+        }
     }
 
     Ok(columns)
@@ -139,7 +156,8 @@ impl VTab for ClickHouseVTab {
     unsafe fn bind(bind: &BindInfo, data: *mut ClickHouseBindData) -> Result<(), Box<dyn Error>> {
         let filepath = bind.get_parameter(0).to_string();
         
-        let mut reader = BufReader::new(File::open(&filepath)?);
+        let file = File::open(&filepath)?;
+        let mut reader = BufReader::with_capacity(64 * 1024, file);
         let columns = read_native_format(&mut reader)?;
         
         for column in &columns {
@@ -154,28 +172,36 @@ impl VTab for ClickHouseVTab {
             bind.add_result_column(&column.name, LogicalTypeHandle::from(logical_type));
         }
         
+        // Convert and store filepath
+        let c_filepath = CString::new(filepath)?;
         unsafe {
-            (*data).filepath = CString::new(filepath)?.into_raw();
+            (*data).filepath = c_filepath.into_raw();
         }
+        
         Ok(())
     }
 
     unsafe fn init(info: &InitInfo, data: *mut ClickHouseInitData) -> Result<(), Box<dyn Error>> {
         let bind_data = info.get_bind_data::<ClickHouseBindData>();
         let filepath = unsafe { CStr::from_ptr((*bind_data).filepath).to_str()? };
-        
-        let mut reader = BufReader::new(File::open(filepath)?);
-        let columns = read_native_format(&mut reader)?;
-        let total_rows = if columns.is_empty() { 0 } else { columns[0].data.len() };
-
+    
+        let file = File::open(filepath)?;
+        let mut reader = BufReader::with_capacity(64 * 1024, file);
+    
+        // Move columns directly into the data structure without intermediate assignment
+        let read_result = read_native_format(&mut reader)?;
+        let total_rows = if read_result.is_empty() { 0 } else { read_result[0].data.len() };
+    
         unsafe {
-            (*data).columns = columns;
+            std::ptr::write(&mut (*data).columns, read_result);
             (*data).current_row = 0;
             (*data).total_rows = total_rows;
             (*data).done = false;
         }
+    
         Ok(())
     }
+
 
     unsafe fn func(func: &FunctionInfo, output: &mut DataChunkHandle) -> Result<(), Box<dyn Error>> {
         let init_data = func.get_init_data::<ClickHouseInitData>();
