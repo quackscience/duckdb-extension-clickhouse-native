@@ -20,4 +20,4 @@ jobs:
       ci_tools_version: main
       extension_name: clickhouse_native
       extra_toolchains: rust;python3
-      exclude_archs: 'windows_amd64_rtools'
+      exclude_archs: 'windows_amd64_rtools;windows_amd64'
