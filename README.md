@@ -10,6 +10,7 @@ This experimental rust extension allows reading ClickHouse Native Format databas
 - [x] Column Extraction
 - [x] Blocks Parser & Iterator
 - [ ] Type Mapping for complex fields
+- [ ] Compression support
 
 <!--
 ### 📦 Installation
