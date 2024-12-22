@@ -11,12 +11,33 @@ use byteorder::{ReadBytesExt, LittleEndian};
 #[allow(dead_code)]
 #[derive(Debug)]
 enum ColumnType {
-    String, UInt8, UInt64, Int, Enum8, Unsupported(String),
+    String,
+    UInt8,
+    UInt64,
+    Int,
+    Enum8(EnumType),  // Changed from unit variant to tuple variant
+    Unsupported(String),
 }
 
 #[derive(Debug)]
 enum ColumnData {
-    String(String), UInt8(u8), UInt64(u64), Int(i32), Null,
+    String(String),
+    UInt8(u8),
+    UInt64(u64),
+    Int(i32),
+    Enum8(String),
+    Null,
+}
+
+#[derive(Debug)]
+struct EnumValue {
+    name: String,
+    value: i8,
+}
+
+#[derive(Debug)]
+struct EnumType {
+    values: Vec<EnumValue>,
 }
 
 #[derive(Debug)]
@@ -71,6 +92,41 @@ fn read_string(reader: &mut impl Read) -> io::Result<String> {
         .to_string())
 }
 
+fn parse_enum_values(params: &str) -> Option<EnumType> {
+    // Remove outer parentheses and trim whitespace
+    let inner = params.trim_matches(|c| c == '(' || c == ')').trim();
+    
+    // If there's no content after trimming, return None
+    if inner.is_empty() {
+        return None;
+    }
+    
+    let mut values = Vec::new();
+    for pair in inner.split(',') {
+        let parts: Vec<&str> = pair.split('=').collect();
+        if parts.len() != 2 {
+            continue;
+        }
+        
+        // Parse the string value (removing quotes)
+        let name = parts[0]
+            .trim()
+            .trim_matches('\'')
+            .to_string();
+            
+        // Parse the numeric value
+        if let Ok(value) = parts[1].trim().parse::<i8>() {
+            values.push(EnumValue { name, value });
+        }
+    }
+    
+    if values.is_empty() {
+        None
+    } else {
+        Some(EnumType { values })
+    }
+}
+
 fn parse_column_type(type_str: &str) -> (ColumnType, Option<String>) {
     let params_start = type_str.find('(');
     let base_type = match params_start {
@@ -91,7 +147,17 @@ fn parse_column_type(type_str: &str) -> (ColumnType, Option<String>) {
         "UInt8" => ColumnType::UInt8,
         "UInt64" => ColumnType::UInt64,
         "Int" => ColumnType::Int,
-        "Enum8" => ColumnType::Enum8,
+        "Enum8" => {
+            if let Some(ref p) = params {
+                if let Some(enum_type) = parse_enum_values(p) {
+                    ColumnType::Enum8(enum_type)
+                } else {
+                    ColumnType::Unsupported("Invalid Enum8".to_string())
+                }
+            } else {
+                ColumnType::Unsupported("Invalid Enum8".to_string())
+            }
+        },
         other => ColumnType::Unsupported(other.to_string()),
     };
 
@@ -107,7 +173,16 @@ fn read_column_data(reader: &mut impl Read, column_type: &ColumnType, rows: u64)
                 ColumnData::UInt64(val)
             },
             ColumnType::String => ColumnData::String(read_string(reader)?),
-            ColumnType::UInt8 | ColumnType::Enum8 => ColumnData::UInt8(reader.read_u8()?),
+            ColumnType::UInt8 => ColumnData::UInt8(reader.read_u8()?),
+            ColumnType::Enum8(enum_type) => {
+                let val = reader.read_u8()?;
+                let enum_str = enum_type.values
+                    .iter()
+                    .find(|ev| ev.value == val as i8)
+                    .map(|ev| ev.name.clone())
+                    .unwrap_or_else(|| format!("Unknown({})", val));
+                ColumnData::Enum8(enum_str)
+            },
             ColumnType::Int => ColumnData::Int(reader.read_i32::<LittleEndian>()?),
             ColumnType::Unsupported(type_name) => {
                 ColumnData::String(format!("<unsupported:{}>", type_name))
@@ -205,7 +280,7 @@ impl VTab for ClickHouseVTab {
                 ColumnType::UInt8 => LogicalTypeId::Integer,
                 ColumnType::UInt64 => LogicalTypeId::Integer,
                 ColumnType::Int => LogicalTypeId::Integer,
-                ColumnType::Enum8 => LogicalTypeId::Integer,
+                ColumnType::Enum8(_) => LogicalTypeId::Varchar,  // Store enums as strings
                 ColumnType::Unsupported(_) => LogicalTypeId::Varchar,
             };
             bind.add_result_column(&column.name, LogicalTypeHandle::from(logical_type));
@@ -272,15 +347,24 @@ impl VTab for ClickHouseVTab {
                             }
                         }
                     },
-                    ColumnType::UInt8 | ColumnType::Enum8 => {
+                    ColumnType::UInt8 => {
                         let slice = vector.as_mut_slice::<i32>();
                         for row in 0..batch_size {
-                            let data_idx = (*init_data).current_row + row;
+                        let data_idx = (*init_data).current_row + row;
                             if let ColumnData::UInt8(v) = column.data[data_idx] {
                                 slice[row] = v as i32;
                             }
                         }
                     },
+                    ColumnType::Enum8(_) => {
+                        for row in 0..batch_size {
+                            let data_idx = (*init_data).current_row + row;
+                            if let ColumnData::Enum8(ref s) = column.data[data_idx] {
+                                vector.insert(row, s.as_str());
+                            }
+                        }
+                    },
+
                     ColumnType::UInt64 => {
                         let slice = vector.as_mut_slice::<i32>();
                         for row in 0..batch_size {
