@@ -17,13 +17,14 @@ This experimental rust extension allows reading ClickHouse Native Format databas
 - [ ] Compression support
 - [ ] Filter / Range support
 
-<!--
+<br>
+
 ### 📦 Installation
 ```sql
 INSTALL chsql_native FROM community;
 LOAD chsql_native;
 ```
--->
+
 
 ### Input
 Generate some native files with `clickhouse-local` or `clickhouse-server`
@@ -31,8 +32,8 @@ Generate some native files with `clickhouse-local` or `clickhouse-server`
 ```sql
 --- simple w/ one row, two columns
 SELECT version(), number FROM numbers(1) INTO OUTFILE '/tmp/numbers.clickhouse' FORMAT Native;
---- simple w/ one column, 100 rows
-SELECT number FROM numbers(100) INTO OUTFILE '/tmp/100.clickhouse' FORMAT Native;
+--- simple w/ one column, 100000 rows
+SELECT number FROM numbers(100000) INTO OUTFILE '/tmp/100000.clickhouse' FORMAT Native;
 --- complex w/ multiple types
 SELECT * FROM system.functions LIMIT 10 INTO OUTFILE '/tmp/functions.clickhouse' FORMAT Native;
 ```
@@ -59,7 +60,7 @@ D SELECT count(*), max(number) FROM clickhouse_native('/tmp/100000.clickhouse');
 └──────────────┴─────────────┘
 ```
 ```sql
-D SELECT * FROM clickhouse_native('/tmp/manyfunctions.clickhouse') WHERE alias_to != '' LIMIT 10;
+D SELECT * FROM clickhouse_native('/tmp/functions.clickhouse') WHERE alias_to != '' LIMIT 10;
 ┌────────────────────┬──────────────┬──────────────────┬──────────────────────┬──────────────┬─────────┬───┬─────────┬───────────┬────────────────┬──────────┬────────────┐
 │        name        │ is_aggregate │ case_insensitive │       alias_to       │ create_query │ origin  │ … │ syntax  │ arguments │ returned_value │ examples │ categories │
 │      varchar       │    int32     │      int32       │       varchar        │   varchar    │ varchar │   │ varchar │  varchar  │    varchar     │ varchar  │  varchar   │
