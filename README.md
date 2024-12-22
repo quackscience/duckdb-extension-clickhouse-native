@@ -9,7 +9,11 @@ This experimental rust extension allows reading ClickHouse Native Format databas
 - [x] Basic Fomat Reading
 - [x] Column Extraction
 - [x] Blocks Parser & Iterator
-- [ ] Type Mapping for complex fields
+- [ ] Type Mapping WIP
+  - [x] Strings
+  - [x] Integers
+  - [x] Enums
+  - [ ] ???
 - [ ] Compression support
 
 <!--
