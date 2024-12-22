@@ -81,10 +81,9 @@ impl Free for ClickHouseInitData {
     }
 }
 
-
 fn read_string(reader: &mut impl Read) -> io::Result<String> {
-    let len = reader.read_u8()?;
-    let mut buffer = vec![0; len as usize];
+    let len = read_var_u64(reader)? as usize;
+    let mut buffer = vec![0; len];
     reader.read_exact(&mut buffer)?;
     Ok(String::from_utf8_lossy(&buffer)
         .replace('\0', "")
