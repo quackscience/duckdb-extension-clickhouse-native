@@ -19,8 +19,8 @@ This experimental rust extension allows reading ClickHouse Native Format databas
 <!--
 ### 📦 Installation
 ```sql
-INSTALL clickhouse_native FROM community;
-LOAD clickhouse_native;
+INSTALL chsql_native FROM community;
+LOAD chsql_native;
 ```
 -->
 

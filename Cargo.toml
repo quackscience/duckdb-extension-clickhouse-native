@@ -1,5 +1,5 @@
 [package]
-name = "clickhouse_native"
+name = "chsql_native"
 version = "0.1.0"
 edition = "2021"
 
@@ -15,7 +15,7 @@ strip = true
 # src/wasm_lib.rs forwards to src/lib.rs so that we can change from cdylib
 # (that is needed while compiling natively) to staticlib (needed since the
 # actual linking will be done via emcc
-name = "clickhouse_native"
+name = "chsql_native"
 path = "src/wasm_lib.rs"
 crate-type = ["staticlib"]
 

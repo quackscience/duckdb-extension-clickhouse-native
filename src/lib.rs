@@ -395,7 +395,7 @@ impl VTab for ClickHouseVTab {
     }
 }
 
-#[duckdb_entrypoint_c_api(ext_name = "clickhouse_native", min_duckdb_version = "v0.0.1")]
+#[duckdb_entrypoint_c_api(ext_name = "chsql_native", min_duckdb_version = "v0.0.1")]
 pub unsafe fn extension_entrypoint(con: Connection) -> Result<(), Box<dyn Error>> {
     con.register_table_function::<ClickHouseVTab>("clickhouse_native")?;
     Ok(())

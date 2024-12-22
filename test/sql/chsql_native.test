@@ -9,7 +9,7 @@ SELECT clickhouse_native('Sam');
 Catalog Error: Scalar Function with name clickhouse_native does not exist!
 
 # Require statement will ensure the extension is loaded from now on
-require clickhouse_native
+require chsql_native
 
 require icu
 

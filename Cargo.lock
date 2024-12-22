@@ -368,7 +368,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "clickhouse_native"
+name = "chsql_native"
 version = "0.1.0"
 dependencies = [
  "byteorder",
