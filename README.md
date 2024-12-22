@@ -58,3 +58,23 @@ D SELECT count(*), max(number) FROM clickhouse_native('/tmp/100000.clickhouse');
 │       100000 │       99999 │
 └──────────────┴─────────────┘
 ```
+```sql
+D SELECT * FROM clickhouse_native('/tmp/manyfunctions.clickhouse') WHERE alias_to != '' LIMIT 10;
+┌────────────────────┬──────────────┬──────────────────┬──────────────────────┬──────────────┬─────────┬───┬─────────┬───────────┬────────────────┬──────────┬────────────┐
+│        name        │ is_aggregate │ case_insensitive │       alias_to       │ create_query │ origin  │ … │ syntax  │ arguments │ returned_value │ examples │ categories │
+│      varchar       │    int32     │      int32       │       varchar        │   varchar    │ varchar │   │ varchar │  varchar  │    varchar     │ varchar  │  varchar   │
+├────────────────────┼──────────────┼──────────────────┼──────────────────────┼──────────────┼─────────┼───┼─────────┼───────────┼────────────────┼──────────┼────────────┤
+│ connection_id      │            0 │                1 │ connectionID         │              │ System  │ … │         │           │                │          │            │
+│ rand32             │            0 │                0 │ rand                 │              │ System  │ … │         │           │                │          │            │
+│ INET6_ATON         │            0 │                1 │ IPv6StringToNum      │              │ System  │ … │         │           │                │          │            │
+│ INET_ATON          │            0 │                1 │ IPv4StringToNum      │              │ System  │ … │         │           │                │          │            │
+│ truncate           │            0 │                1 │ trunc                │              │ System  │ … │         │           │                │          │            │
+│ ceiling            │            0 │                1 │ ceil                 │              │ System  │ … │         │           │                │          │            │
+│ replace            │            0 │                1 │ replaceAll           │              │ System  │ … │         │           │                │          │            │
+│ from_utc_timestamp │            0 │                1 │ fromUTCTimestamp     │              │ System  │ … │         │           │                │          │            │
+│ mapFromString      │            0 │                0 │ extractKeyValuePairs │              │ System  │ … │         │           │                │          │            │
+│ str_to_map         │            0 │                1 │ extractKeyValuePairs │              │ System  │ … │         │           │                │          │            │
+├────────────────────┴──────────────┴──────────────────┴──────────────────────┴──────────────┴─────────┴───┴─────────┴───────────┴────────────────┴──────────┴────────────┤
+│ 10 rows                                                                                                                                           12 columns (11 shown) │
+└─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
