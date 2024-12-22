@@ -15,6 +15,7 @@ This experimental rust extension allows reading ClickHouse Native Format databas
   - [x] Enums
   - [ ] ??? as String
 - [ ] Compression support
+- [ ] Filter / Range support
 
 <!--
 ### 📦 Installation
@@ -37,8 +38,7 @@ SELECT * FROM system.functions LIMIT 10 INTO OUTFILE '/tmp/functions.clickhouse'
 ```
 
 ### Usage
-Read ClickHouse Native files with DuckDB. 
-> _⚠️ Unoptimized full-scan file reading_
+Read ClickHouse Native files with DuckDB. Reads are full-scans at this time.
 
 ```sql
 D SELECT * FROM clickhouse_native('/tmp/numbers.clickhouse');
@@ -82,14 +82,13 @@ D SELECT * FROM clickhouse_native('/tmp/manyfunctions.clickhouse') WHERE alias_t
 <br>
 
 
-### Build
-The extension is not yet distributed via community repository. To test it you'll have to build locally
+### Dev Build
+You can easily modify the code and build a local extension for testing and development.
 
 #### Requirements
 - Rust
-- Build Essentials
 
-Clone and Compile the extension on your system
+1) Clone and Compile the extension on your system
 
 ```bash
 cd /usr/src
@@ -98,13 +97,13 @@ cd duckdb-extension-clickhouse-native
 make configure && make
 ```
 
-Download and Run DuckDB with -unsigned
+2) Download and Run DuckDB with -unsigned
 ```
 wget https://github.com/duckdb/duckdb/releases/download/v1.1.3/duckdb_cli-linux-amd64.zip && unzip duckdb_cli-linux-amd64.zip
 ./duckdb -unsigned
 ```
 
-Load your local extension build
+3) Load your local extension build
 ```sql
 D LOAD '/usr/src/duckdb-extension-clickhouse-native/build/debug/clickhouse_native.duckdb_extension';
 ```
