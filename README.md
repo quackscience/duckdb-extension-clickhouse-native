@@ -37,7 +37,9 @@ SELECT * FROM system.functions LIMIT 10 INTO OUTFILE '/tmp/functions.clickhouse'
 ```
 
 ### Usage
-Read ClickHouse Native files with DuckDB. _Unoptimized full-file reading._
+Read ClickHouse Native files with DuckDB. 
+> _⚠️ Unoptimized full-scan file reading_
+
 ```sql
 D SELECT * FROM clickhouse_native('/tmp/numbers.clickhouse');
 ┌──────────────┬─────────┐
