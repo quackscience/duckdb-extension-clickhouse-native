@@ -15,7 +15,7 @@ enum ColumnType {
     UInt8,
     UInt64,
     Int,
-    Enum8(EnumType),  // Changed from unit variant to tuple variant
+    Enum8(EnumType),
     Unsupported(String),
 }
 
@@ -92,10 +92,8 @@ fn read_string(reader: &mut impl Read) -> io::Result<String> {
 }
 
 fn parse_enum_values(params: &str) -> Option<EnumType> {
-    // Remove outer parentheses and trim whitespace
     let inner = params.trim_matches(|c| c == '(' || c == ')').trim();
     
-    // If there's no content after trimming, return None
     if inner.is_empty() {
         return None;
     }
@@ -107,13 +105,11 @@ fn parse_enum_values(params: &str) -> Option<EnumType> {
             continue;
         }
         
-        // Parse the string value (removing quotes)
         let name = parts[0]
             .trim()
             .trim_matches('\'')
             .to_string();
             
-        // Parse the numeric value
         if let Ok(value) = parts[1].trim().parse::<i8>() {
             values.push(EnumValue { name, value });
         }
