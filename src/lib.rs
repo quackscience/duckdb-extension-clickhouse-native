@@ -1,3 +1,4 @@
+mod folder;
 use std::{error::Error, ffi::{c_char, CStr, CString}, fs::File, io::{self, Read, BufReader, Seek}};
 use duckdb::{
     core::{DataChunkHandle, LogicalTypeHandle, LogicalTypeId, Inserter},
@@ -398,5 +399,6 @@ impl VTab for ClickHouseVTab {
 #[duckdb_entrypoint_c_api(ext_name = "chsql_native", min_duckdb_version = "v0.0.1")]
 pub unsafe fn extension_entrypoint(con: Connection) -> Result<(), Box<dyn Error>> {
     con.register_table_function::<ClickHouseVTab>("clickhouse_native")?;
+    con.register_table_function::<folder::ClickHouseFolderVTab>("clickhouse_folder")?;
     Ok(())
 }
