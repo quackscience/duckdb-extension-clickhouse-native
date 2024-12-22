@@ -12,12 +12,33 @@ use byteorder::{ReadBytesExt, LittleEndian};
 #[allow(dead_code)]
 #[derive(Debug)]
 enum ColumnType {
-    String, UInt8, UInt64, Int, Enum8, Unsupported(String),
+    String,
+    UInt8,
+    UInt64,
+    Int,
+    Enum8(EnumType),  // Changed from unit variant to tuple variant
+    Unsupported(String),
 }
 
 #[derive(Debug)]
 enum ColumnData {
-    String(String), UInt8(u8), UInt64(u64), Int(i32), Null,
+    String(String),
+    UInt8(u8),
+    UInt64(u64),
+    Int(i32),
+    Enum8(String),
+    Null,
+}
+
+#[derive(Debug)]
+struct EnumValue {
+    name: String,
+    value: i8,
+}
+
+#[derive(Debug)]
+struct EnumType {
+    values: Vec<EnumValue>,
 }
 
 #[derive(Debug)]
@@ -44,6 +65,9 @@ struct ClickHouseInitData {
 
 impl Free for ClickHouseBindData {
     fn free(&mut self) {
+        if self.filepath.is_null() {
+            return;
+        }
         self._filepath_holder.take();
         self.filepath = std::ptr::null_mut();
     }
@@ -51,15 +75,56 @@ impl Free for ClickHouseBindData {
 
 impl Free for ClickHouseInitData {
     fn free(&mut self) {
+        if self.columns.is_empty() {
+            return;
+        }
         self.columns.clear();
     }
 }
 
 fn read_string(reader: &mut impl Read) -> io::Result<String> {
-    let len = reader.read_u8()?;
-    let mut buffer = vec![0; len as usize];
+    let len = read_var_u64(reader)? as usize;
+    let mut buffer = vec![0; len];
     reader.read_exact(&mut buffer)?;
-    Ok(String::from_utf8_lossy(&buffer).into_owned())
+    Ok(String::from_utf8_lossy(&buffer)
+        .replace('\0', "")
+        .replace('\u{FFFD}', "")
+        .to_string())
+}
+
+fn parse_enum_values(params: &str) -> Option<EnumType> {
+    // Remove outer parentheses and trim whitespace
+    let inner = params.trim_matches(|c| c == '(' || c == ')').trim();
+    
+    // If there's no content after trimming, return None
+    if inner.is_empty() {
+        return None;
+    }
+    
+    let mut values = Vec::new();
+    for pair in inner.split(',') {
+        let parts: Vec<&str> = pair.split('=').collect();
+        if parts.len() != 2 {
+            continue;
+        }
+        
+        // Parse the string value (removing quotes)
+        let name = parts[0]
+            .trim()
+            .trim_matches('\'')
+            .to_string();
+            
+        // Parse the numeric value
+        if let Ok(value) = parts[1].trim().parse::<i8>() {
+            values.push(EnumValue { name, value });
+        }
+    }
+    
+    if values.is_empty() {
+        None
+    } else {
+        Some(EnumType { values })
+    }
 }
 
 fn parse_column_type(type_str: &str) -> (ColumnType, Option<String>) {
@@ -82,7 +147,17 @@ fn parse_column_type(type_str: &str) -> (ColumnType, Option<String>) {
         "UInt8" => ColumnType::UInt8,
         "UInt64" => ColumnType::UInt64,
         "Int" => ColumnType::Int,
-        "Enum8" => ColumnType::Enum8,
+        "Enum8" => {
+            if let Some(ref p) = params {
+                if let Some(enum_type) = parse_enum_values(p) {
+                    ColumnType::Enum8(enum_type)
+                } else {
+                    ColumnType::Unsupported("Invalid Enum8".to_string())
+                }
+            } else {
+                ColumnType::Unsupported("Invalid Enum8".to_string())
+            }
+        },
         other => ColumnType::Unsupported(other.to_string()),
     };
 
@@ -91,19 +166,27 @@ fn parse_column_type(type_str: &str) -> (ColumnType, Option<String>) {
 
 fn read_column_data(reader: &mut impl Read, column_type: &ColumnType, rows: u64) -> io::Result<Vec<ColumnData>> {
     let mut data = Vec::with_capacity(rows as usize);
-    for i in 0..rows {
+    for _ in 0..rows {
         let value = match column_type {
             ColumnType::UInt64 => {
                 let val = reader.read_u64::<LittleEndian>()?;
-                // if i < 5 || i == rows - 1 {
-                //     println!("Row {}: {}", i, val);
-                // }
                 ColumnData::UInt64(val)
             },
             ColumnType::String => ColumnData::String(read_string(reader)?),
-            ColumnType::UInt8 | ColumnType::Enum8 => ColumnData::UInt8(reader.read_u8()?),
+            ColumnType::UInt8 => ColumnData::UInt8(reader.read_u8()?),
+            ColumnType::Enum8(enum_type) => {
+                let val = reader.read_u8()?;
+                let enum_str = enum_type.values
+                    .iter()
+                    .find(|ev| ev.value == val as i8)
+                    .map(|ev| ev.name.clone())
+                    .unwrap_or_else(|| format!("Unknown({})", val));
+                ColumnData::Enum8(enum_str)
+            },
             ColumnType::Int => ColumnData::Int(reader.read_i32::<LittleEndian>()?),
-            ColumnType::Unsupported(_) => ColumnData::Null,
+            ColumnType::Unsupported(type_name) => {
+                ColumnData::String(format!("<unsupported:{}>", type_name))
+            }
         };
         data.push(value);
     }
@@ -127,11 +210,9 @@ fn read_var_u64(reader: &mut impl Read) -> io::Result<u64> {
 }
 
 fn skip_block_header(reader: &mut BufReader<File>) -> io::Result<()> {
-    // Skip the marker
     let mut marker = [0u8; 4];
     reader.read_exact(&mut marker)?;
     
-    // Skip two strings (each prefixed with length)
     for _ in 0..2 {
         let str_len = reader.read_u8()? as u64;
         reader.seek_relative(str_len as i64)?;
@@ -141,14 +222,10 @@ fn skip_block_header(reader: &mut BufReader<File>) -> io::Result<()> {
 }
 
 fn read_native_format(reader: &mut BufReader<File>) -> io::Result<Vec<Column>> {
-    // Read number of columns
     let num_columns = read_var_u64(reader)?;
     let mut columns = Vec::new();
-
-    // Read block size
     let num_rows = read_var_u64(reader)?;
 
-    // Read column definitions and first block data
     for _ in 0..num_columns {
         let name = read_string(reader)?;
         let type_str = read_string(reader)?;        
@@ -157,13 +234,11 @@ fn read_native_format(reader: &mut BufReader<File>) -> io::Result<Vec<Column>> {
         columns.push(Column { name, type_: column_type, type_params, data });
     }
 
-    // Read subsequent blocks
     loop {
-        // Try to read number of columns for next block
-        let pos = reader.stream_position()?;
+        let _pos = reader.stream_position()?;
         let block_columns = match read_var_u64(reader) {
             Ok(cols) => cols,
-            Err(_) => break,  // End of file
+            Err(_) => break,
         };
 
         let block_rows = read_var_u64(reader)?;
@@ -172,13 +247,11 @@ fn read_native_format(reader: &mut BufReader<File>) -> io::Result<Vec<Column>> {
             break;
         }
 
-        // Skip column definitions for the block (they should match)
         for _ in 0..block_columns {
-            let _ = read_string(reader)?;  // column name
-            let _ = read_string(reader)?;  // column type
+            let _ = read_string(reader)?;
+            let _ = read_string(reader)?;
         }
 
-        // Read block data
         for col in &mut columns {
             let mut new_data = read_column_data(reader, &col.type_, block_rows)?;
             col.data.append(&mut new_data);
@@ -207,7 +280,7 @@ impl VTab for ClickHouseVTab {
                 ColumnType::UInt8 => LogicalTypeId::Integer,
                 ColumnType::UInt64 => LogicalTypeId::Integer,
                 ColumnType::Int => LogicalTypeId::Integer,
-                ColumnType::Enum8 => LogicalTypeId::Integer,
+                ColumnType::Enum8(_) => LogicalTypeId::Varchar,  // Store enums as strings
                 ColumnType::Unsupported(_) => LogicalTypeId::Varchar,
             };
             bind.add_result_column(&column.name, LogicalTypeHandle::from(logical_type));
@@ -261,23 +334,37 @@ impl VTab for ClickHouseVTab {
                 let mut vector = output.flat_vector(col_idx);
 
                 match &column.type_ {
-                    ColumnType::String => {
+                    ColumnType::String | ColumnType::Unsupported(_) => {
                         for row in 0..batch_size {
                             let data_idx = (*init_data).current_row + row;
-                            if let ColumnData::String(s) = &column.data[data_idx] {
-                                vector.insert(row, s.as_str());
+                            match &column.data[data_idx] {
+                                ColumnData::String(s) => {
+                                    let cleaned = s.replace('\0', "")
+                                                 .replace('\u{FFFD}', "");
+                                    vector.insert(row, cleaned.as_str())
+                                },
+                                _ => vector.insert(row, "<invalid>"),
                             }
                         }
                     },
-                    ColumnType::UInt8 | ColumnType::Enum8 => {
+                    ColumnType::UInt8 => {
                         let slice = vector.as_mut_slice::<i32>();
                         for row in 0..batch_size {
-                            let data_idx = (*init_data).current_row + row;
+                        let data_idx = (*init_data).current_row + row;
                             if let ColumnData::UInt8(v) = column.data[data_idx] {
                                 slice[row] = v as i32;
                             }
                         }
                     },
+                    ColumnType::Enum8(_) => {
+                        for row in 0..batch_size {
+                            let data_idx = (*init_data).current_row + row;
+                            if let ColumnData::Enum8(ref s) = column.data[data_idx] {
+                                vector.insert(row, s.as_str());
+                            }
+                        }
+                    },
+
                     ColumnType::UInt64 => {
                         let slice = vector.as_mut_slice::<i32>();
                         for row in 0..batch_size {
@@ -294,11 +381,6 @@ impl VTab for ClickHouseVTab {
                             if let ColumnData::Int(v) = column.data[data_idx] {
                                 slice[row] = v;
                             }
-                        }
-                    },
-                    ColumnType::Unsupported(_) => {
-                        for row in 0..batch_size {
-                            vector.insert(row, "NULL");
                         }
                     },
                 }

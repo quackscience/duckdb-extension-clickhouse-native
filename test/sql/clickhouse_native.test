@@ -15,6 +15,6 @@ require icu
 
 # Confirm the extension works
 query I
-SELECT number FROM clickhouse_native('./numbers.clickhouse');
+SELECT count(*) FROM clickhouse_native('./numbers.clickhouse');
 ----
-0
+1

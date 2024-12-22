@@ -6,9 +6,15 @@ This experimental rust extension allows reading ClickHouse Native Format databas
 > Experimental: USE AT YOUR OWN RISK!
 
 ### Status
-- [x] Basic Reading & Types
-- [x] Main Block Parser
-- [ ] Next-Block Parser
+- [x] Basic Fomat Reading
+- [x] Column Extraction
+- [x] Blocks Parser & Iterator
+- [x] Type Mapping WIP
+  - [x] Strings
+  - [x] Integers
+  - [x] Enums
+  - [ ] ??? as String
+- [ ] Compression support
 
 <!--
 ### 📦 Installation
@@ -19,19 +25,21 @@ LOAD clickhouse_native;
 -->
 
 ### Input
-Generate some files with `clickhouse-local` or `clickhouse-server`
+Generate some native files with `clickhouse-local` or `clickhouse-server`
 
 ```sql
 --- simple w/ one row, two columns
 SELECT version(), number FROM numbers(1) INTO OUTFILE '/tmp/numbers.clickhouse' FORMAT Native;
---- simple w/ one column, five rows
-SELECT number FROM numbers(5) INTO OUTFILE '/tmp/data.clickhouse' FORMAT Native;
+--- simple w/ one column, 100 rows
+SELECT number FROM numbers(100) INTO OUTFILE '/tmp/100.clickhouse' FORMAT Native;
 --- complex w/ multiple types
 SELECT * FROM system.functions LIMIT 10 INTO OUTFILE '/tmp/functions.clickhouse' FORMAT Native;
 ```
 
 ### Usage
-Read ClickHouse Native files with DuckDB. _Unoptimized full-file reading._
+Read ClickHouse Native files with DuckDB. 
+> _⚠️ Unoptimized full-scan file reading_
+
 ```sql
 D SELECT * FROM clickhouse_native('/tmp/numbers.clickhouse');
 ┌──────────────┬─────────┐
@@ -40,4 +48,33 @@ D SELECT * FROM clickhouse_native('/tmp/numbers.clickhouse');
 ├──────────────┼─────────┤
 │ 24.12.1.1273 │ 0       │
 └──────────────┴─────────┘
+```
+```sql
+D SELECT count(*), max(number) FROM clickhouse_native('/tmp/100000.clickhouse');
+┌──────────────┬─────────────┐
+│ count_star() │ max(number) │
+│    int64     │    int32    │
+├──────────────┼─────────────┤
+│       100000 │       99999 │
+└──────────────┴─────────────┘
+```
+```sql
+D SELECT * FROM clickhouse_native('/tmp/manyfunctions.clickhouse') WHERE alias_to != '' LIMIT 10;
+┌────────────────────┬──────────────┬──────────────────┬──────────────────────┬──────────────┬─────────┬───┬─────────┬───────────┬────────────────┬──────────┬────────────┐
+│        name        │ is_aggregate │ case_insensitive │       alias_to       │ create_query │ origin  │ … │ syntax  │ arguments │ returned_value │ examples │ categories │
+│      varchar       │    int32     │      int32       │       varchar        │   varchar    │ varchar │   │ varchar │  varchar  │    varchar     │ varchar  │  varchar   │
+├────────────────────┼──────────────┼──────────────────┼──────────────────────┼──────────────┼─────────┼───┼─────────┼───────────┼────────────────┼──────────┼────────────┤
+│ connection_id      │            0 │                1 │ connectionID         │              │ System  │ … │         │           │                │          │            │
+│ rand32             │            0 │                0 │ rand                 │              │ System  │ … │         │           │                │          │            │
+│ INET6_ATON         │            0 │                1 │ IPv6StringToNum      │              │ System  │ … │         │           │                │          │            │
+│ INET_ATON          │            0 │                1 │ IPv4StringToNum      │              │ System  │ … │         │           │                │          │            │
+│ truncate           │            0 │                1 │ trunc                │              │ System  │ … │         │           │                │          │            │
+│ ceiling            │            0 │                1 │ ceil                 │              │ System  │ … │         │           │                │          │            │
+│ replace            │            0 │                1 │ replaceAll           │              │ System  │ … │         │           │                │          │            │
+│ from_utc_timestamp │            0 │                1 │ fromUTCTimestamp     │              │ System  │ … │         │           │                │          │            │
+│ mapFromString      │            0 │                0 │ extractKeyValuePairs │              │ System  │ … │         │           │                │          │            │
+│ str_to_map         │            0 │                1 │ extractKeyValuePairs │              │ System  │ … │         │           │                │          │            │
+├────────────────────┴──────────────┴──────────────────┴──────────────────────┴──────────────┴─────────┴───┴─────────┴───────────┴────────────────┴──────────┴────────────┤
+│ 10 rows                                                                                                                                           12 columns (11 shown) │
+└─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
