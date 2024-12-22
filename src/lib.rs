@@ -43,6 +43,9 @@ struct ClickHouseInitData {
 
 impl Free for ClickHouseBindData {
     fn free(&mut self) {
+        if self.filepath.is_null() {
+            return;
+        }
         self._filepath_holder.take();
         self.filepath = std::ptr::null_mut();
     }
@@ -50,9 +53,13 @@ impl Free for ClickHouseBindData {
 
 impl Free for ClickHouseInitData {
     fn free(&mut self) {
+        if self.columns.is_empty() {
+            return;
+        }
         self.columns.clear();
     }
 }
+
 
 fn read_string(reader: &mut impl Read) -> io::Result<String> {
     let len = reader.read_u8()?;
