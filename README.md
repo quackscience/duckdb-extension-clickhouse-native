@@ -78,3 +78,33 @@ D SELECT * FROM clickhouse_native('/tmp/manyfunctions.clickhouse') WHERE alias_t
 │ 10 rows                                                                                                                                           12 columns (11 shown) │
 └─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+<br>
+
+
+### Build
+The extension is not yet distributed via community repository. To test it you'll have to build locally
+
+#### Requirements
+- Rust
+- Build Essentials
+
+Clone and Compile the extension on your system
+
+```bash
+cd /usr/src
+git clone --recurse-submodules https://github.com/quackscience/duckdb-extension-clickhouse-native
+cd duckdb-extension-clickhouse-native
+make configure && make
+```
+
+Download and Run DuckDB with -unsigned
+```
+wget https://github.com/duckdb/duckdb/releases/download/v1.1.3/duckdb_cli-linux-amd64.zip && unzip duckdb_cli-linux-amd64.zip
+./duckdb -unsigned
+```
+
+Load your local extension build
+```sql
+D LOAD '/usr/src/duckdb-extension-clickhouse-native/build/debug/clickhouse_native.duckdb_extension';
+```
