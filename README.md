@@ -3,7 +3,8 @@
 # DuckDB Clickhouse Native File reader
 This experimental rust extension allows reading ClickHouse Native Format database files.
 
-> Experimental: USE AT YOUR OWN RISK!
+> This reader is a clear room implementation of the CH Native file format using no code or libraries from clickhouse.<br>
+> As such it is potentially incomplete, imperfect and might not be compatible with all files. USE AT YOUR OWN RISK!
 
 
 ### 📦 Installation
@@ -13,7 +14,7 @@ LOAD chsql_native;
 ```
 
 
-### ➡️ Input
+### 🏁 Input
 Generate some native files with `clickhouse-local` or `clickhouse-server`
 
 ```sql
@@ -136,3 +137,10 @@ wget https://github.com/duckdb/duckdb/releases/download/v1.1.3/duckdb_cli-linux-
 ```sql
 D LOAD '/usr/src/duckdb-extension-clickhouse-native/build/debug/clickhouse_native.duckdb_extension';
 ```
+
+
+----
+
+###### Disclaimer
+> DuckDB ® is a trademark of DuckDB Foundation.
+> ClickHouse® is a trademark of ClickHouse Inc. All trademarks, service marks, and logos mentioned or depicted are the property of their respective owners. The use of any third-party trademarks, brand names, product names, and company names is purely informative or intended as parody and does not imply endorsement, affiliation, or association with the respective owners.
