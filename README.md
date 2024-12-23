@@ -80,6 +80,32 @@ D SELECT * FROM clickhouse_native('/tmp/functions.clickhouse') WHERE alias_to !=
 └─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
+### Performance
+Simple CLI _cold start_ count() test using `duckdb` vs. `clickhouse-local` and 1M rows
+#### DuckDB
+```sql
+# time duckdb -c "LOAD chsql_native; SELECT count(*) FROM clickhouse_native('/tmp/1M.clickhouse');"
+┌──────────────┐
+│ count_star() │
+│    int64     │
+├──────────────┤
+│      1000000 │
+└──────────────┘
+
+real	0m0.095s
+user	0m0.077s
+sys	0m0.029s
+```
+#### clickhouse-local
+```sql
+# time clickhouse local "SELECT count(*) FROM '/tmp/1M.clickhouse'";
+1000000
+
+real	0m0.141s
+user	0m0.086s
+sys	0m0.043s
+```
+
 <br>
 
 
