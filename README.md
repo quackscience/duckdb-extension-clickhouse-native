@@ -3,8 +3,7 @@
 # DuckDB Clickhouse Native File reader
 This experimental rust extension allows reading ClickHouse Native Format database files.
 
-> This reader is a clear room implementation of the CH Native file format using no code or libraries from clickhouse.<br>
-> As such it is potentially incomplete, imperfect and might not be compatible with all files. USE AT YOUR OWN RISK!
+> This reader is a clear room implementation of the ClickHouse Native file format using no code or libraries from ClickHouse Inc. As such it is potentially incomplete, imperfect and might not be compatible with all files. USE AT YOUR OWN RISK!
 
 
 ### 📦 Installation
