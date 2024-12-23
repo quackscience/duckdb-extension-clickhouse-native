@@ -5,19 +5,6 @@ This experimental rust extension allows reading ClickHouse Native Format databas
 
 > Experimental: USE AT YOUR OWN RISK!
 
-### Status
-- [x] Basic Fomat Reading
-- [x] Column Extraction
-- [x] Blocks Parser & Iterator
-- [x] Type Mapping WIP
-  - [x] Strings
-  - [x] Integers
-  - [x] Enums
-  - [ ] ??? as String
-- [ ] Compression support
-- [ ] Filter / Range support
-
-<br>
 
 ### 📦 Installation
 ```sql
@@ -26,7 +13,7 @@ LOAD chsql_native;
 ```
 
 
-### Input
+### ➡️ Input
 Generate some native files with `clickhouse-local` or `clickhouse-server`
 
 ```sql
@@ -38,7 +25,7 @@ SELECT number FROM numbers(100000) INTO OUTFILE '/tmp/100000.clickhouse' FORMAT 
 SELECT * FROM system.functions LIMIT 10 INTO OUTFILE '/tmp/functions.clickhouse' FORMAT Native;
 ```
 
-### Usage
+### ✏️ Usage
 Read ClickHouse Native files with DuckDB. Reads are full-scans at this time.
 
 ```sql
@@ -80,7 +67,7 @@ D SELECT * FROM clickhouse_native('/tmp/functions.clickhouse') WHERE alias_to !=
 └─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Performance
+### 🐎 Performance
 Simple CLI _cold start_ count() test using `duckdb` vs. `clickhouse-local` and 1M rows
 #### DuckDB
 ```sql
@@ -108,8 +95,23 @@ sys	0m0.043s
 
 <br>
 
+### ⛑️ Extension Status
+- [x] Basic Fomat Reading
+- [x] Column Extraction
+- [x] Blocks Parser & Iterator
+- [x] Type Mapping WIP
+  - [x] Strings
+  - [x] Integers
+  - [x] Enums
+  - [ ] ??? as String
+- [ ] Compression support
+- [ ] Filter / Range support
 
-### Dev Build
+
+<br>
+
+
+### ⚙️ Dev Build
 You can easily modify the code and build a local extension for testing and development.
 
 #### Requirements
