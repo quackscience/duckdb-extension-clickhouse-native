@@ -1,29 +1,52 @@
 <img src="https://github.com/user-attachments/assets/46a5c546-7e9b-42c7-87f4-bc8defe674e0" width=250 />
 
 # DuckDB Clickhouse Native File reader
-This experimental rust extension allows reading ClickHouse Native Format database files.
+Experimental ClickHouse Native Client and Native file reader for DuckDB chsql
 
 > Experimental: USE AT YOUR OWN RISK!
 
 ### Status
 - [x] Basic Fomat Reading
-- [x] Column Extraction
-- [x] Blocks Parser & Iterator
-- [x] Type Mapping WIP
-  - [x] Strings
-  - [x] Integers
-  - [x] Enums
-  - [ ] ??? as String
-- [ ] Compression support
+  - [x] Column Extraction
+  - [x] Blocks Parser & Iterator
+  - [x] Type Mapping WIP
+    - [x] Strings
+    - [x] Integers
+    - [x] Enums
+    - [ ] ??? as String
+  - [ ] Compression support
+- [x] Basic Native Client
+  - [x] clickhouse-rs binding
+  - [x] basic types mapping 
 
-<!--
+
 ### 📦 Installation
 ```sql
 INSTALL chsql_native FROM community;
 LOAD chsql_native;
 ```
--->
 
+## Native Client
+The extension provides an experimental clickhouse native client: `clickhouse_reader`
+### Settings
+```
+CLICKHOUSE_URL="tcp://localhost:9000"
+CLICKHOUSE_USER="default"
+CLICKHOUSE_PASSWORD=""
+```
+### Usage
+```
+D SELECT * FROM clickhouse_scan("SELECT version(), 'hello', 123");
+┌────────────┬─────────┬────────┐
+│ version()  │ 'hello' │  123   │
+│  varchar   │ varchar │ uint32 │
+├────────────┼─────────┼────────┤
+│ 24.10.2.80 │ hello   │    123 │
+└────────────┴─────────┴────────┘
+```
+
+## Native Reader
+The extension provides an experimental clickhouse native file reader: `clickhouse_native`
 ### Input
 Generate some native files with `clickhouse-local` or `clickhouse-server`
 
