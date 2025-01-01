@@ -8,6 +8,8 @@ use duckdb_loadable_macros::duckdb_entrypoint_c_api;
 use libduckdb_sys as ffi;
 use byteorder::{ReadBytesExt, LittleEndian};
 
+mod clickhouse_scan;
+
 #[allow(dead_code)]
 #[derive(Debug)]
 enum ColumnType {
@@ -394,5 +396,7 @@ impl VTab for ClickHouseVTab {
 #[duckdb_entrypoint_c_api(ext_name = "chsql_native", min_duckdb_version = "v0.0.1")]
 pub unsafe fn extension_entrypoint(con: Connection) -> Result<(), Box<dyn Error>> {
     con.register_table_function::<ClickHouseVTab>("clickhouse_native")?;
+    // Register new table function
+    clickhouse_scan::register_clickhouse_scan(&con)?;
     Ok(())
 }
