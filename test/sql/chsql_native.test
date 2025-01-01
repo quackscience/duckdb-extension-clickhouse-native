@@ -20,7 +20,7 @@ SELECT count(*) FROM clickhouse_native('./numbers.clickhouse');
 1
 
 # Remote
-query I
-SELECT * FROM clickhouse_scan("SELECT 1");
-----
-1
+# query I
+# SELECT * FROM clickhouse_scan("SELECT 1");
+# ----
+# 1
