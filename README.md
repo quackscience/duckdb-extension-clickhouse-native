@@ -12,16 +12,16 @@ INSTALL chsql_native FROM community;
 LOAD chsql_native;
 ```
 
-## Native Client
+## 🤖 Native Client
 The extension provides an experimental clickhouse native client: `clickhouse_reader`
-### Settings
+### 🏁 Settings
+```bash
+export CLICKHOUSE_URL="tcp://localhost:9000"
+export CLICKHOUSE_USER="default"
+export CLICKHOUSE_PASSWORD=""
 ```
-CLICKHOUSE_URL="tcp://localhost:9000"
-CLICKHOUSE_USER="default"
-CLICKHOUSE_PASSWORD=""
-```
-### Usage
-```
+### ✏️ Usage
+```sql
 D SELECT * FROM clickhouse_scan("SELECT version(), 'hello', 123");
 ┌────────────┬─────────┬────────┐
 │ version()  │ 'hello' │  123   │
@@ -31,7 +31,7 @@ D SELECT * FROM clickhouse_scan("SELECT version(), 'hello', 123");
 └────────────┴─────────┴────────┘
 ```
 
-## Native Reader
+## 🤖 Native Reader
 The extension provides an experimental clickhouse native file reader: `clickhouse_native`
 
 ### 🏁 Input
