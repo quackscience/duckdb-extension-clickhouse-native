@@ -1,9 +1,7 @@
 <img src="https://github.com/user-attachments/assets/46a5c546-7e9b-42c7-87f4-bc8defe674e0" width=250 />
 
-# DuckDB Clickhouse Native File reader
+# DuckDB Clickhouse Native Extension for [chsql](https://github.com/quackscience/duckdb-extension-clickhouse-sql)
 Experimental ClickHouse Native Client and Native file reader for DuckDB chsql
-
-> This reader is a clear room implementation of the ClickHouse Native file format using no code or libraries from ClickHouse Inc. As such it is potentially incomplete, imperfect and might not be compatible with all files. USE AT YOUR OWN RISK!
 
 
 ### 📦 Installation
@@ -87,6 +85,10 @@ D SELECT * FROM clickhouse_native('/tmp/functions.clickhouse') WHERE alias_to !=
 │ 10 rows                                                                                                                                           12 columns (11 shown) │
 └─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+#### Notes
+
+> The reader is a clear room implementation of the ClickHouse Native file format using no code or libraries from ClickHouse Inc. As such it is potentially incomplete, imperfect and might not be compatible with all files. USE AT YOUR OWN RISK!
 
 ### 🐎 Performance
 Simple CLI _cold start_ count() test using `duckdb` vs. `clickhouse-local` and 1M rows
