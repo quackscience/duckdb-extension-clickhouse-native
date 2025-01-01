@@ -1,12 +1,17 @@
-use std::{error::Error, ffi::{c_char, CStr, CString}, fs::File, io::{self, Read, BufReader, Seek}};
+use byteorder::{LittleEndian, ReadBytesExt};
 use duckdb::{
-    core::{DataChunkHandle, LogicalTypeHandle, LogicalTypeId, Inserter},
+    core::{DataChunkHandle, Inserter, LogicalTypeHandle, LogicalTypeId},
     vtab::{BindInfo, Free, FunctionInfo, InitInfo, VTab},
     Connection, Result,
 };
 use duckdb_loadable_macros::duckdb_entrypoint_c_api;
 use libduckdb_sys as ffi;
-use byteorder::{ReadBytesExt, LittleEndian};
+use std::{
+    error::Error,
+    ffi::{c_char, CStr, CString},
+    fs::File,
+    io::{self, BufReader, Read, Seek},
+};
 
 mod clickhouse_scan;
 
@@ -95,28 +100,25 @@ fn read_string(reader: &mut impl Read) -> io::Result<String> {
 
 fn parse_enum_values(params: &str) -> Option<EnumType> {
     let inner = params.trim_matches(|c| c == '(' || c == ')').trim();
-    
+
     if inner.is_empty() {
         return None;
     }
-    
+
     let mut values = Vec::new();
     for pair in inner.split(',') {
         let parts: Vec<&str> = pair.split('=').collect();
         if parts.len() != 2 {
             continue;
         }
-        
-        let name = parts[0]
-            .trim()
-            .trim_matches('\'')
-            .to_string();
-            
+
+        let name = parts[0].trim().trim_matches('\'').to_string();
+
         if let Ok(value) = parts[1].trim().parse::<i8>() {
             values.push(EnumValue { name, value });
         }
     }
-    
+
     if values.is_empty() {
         None
     } else {
@@ -154,32 +156,37 @@ fn parse_column_type(type_str: &str) -> (ColumnType, Option<String>) {
             } else {
                 ColumnType::Unsupported("Invalid Enum8".to_string())
             }
-        },
+        }
         other => ColumnType::Unsupported(other.to_string()),
     };
 
     (column_type, params)
 }
 
-fn read_column_data(reader: &mut impl Read, column_type: &ColumnType, rows: u64) -> io::Result<Vec<ColumnData>> {
+fn read_column_data(
+    reader: &mut impl Read,
+    column_type: &ColumnType,
+    rows: u64,
+) -> io::Result<Vec<ColumnData>> {
     let mut data = Vec::with_capacity(rows as usize);
     for _ in 0..rows {
         let value = match column_type {
             ColumnType::UInt64 => {
                 let val = reader.read_u64::<LittleEndian>()?;
                 ColumnData::UInt64(val)
-            },
+            }
             ColumnType::String => ColumnData::String(read_string(reader)?),
             ColumnType::UInt8 => ColumnData::UInt8(reader.read_u8()?),
             ColumnType::Enum8(enum_type) => {
                 let val = reader.read_u8()?;
-                let enum_str = enum_type.values
+                let enum_str = enum_type
+                    .values
                     .iter()
                     .find(|ev| ev.value == val as i8)
                     .map(|ev| ev.name.clone())
                     .unwrap_or_else(|| format!("Unknown({})", val));
                 ColumnData::Enum8(enum_str)
-            },
+            }
             ColumnType::Int => ColumnData::Int(reader.read_i32::<LittleEndian>()?),
             ColumnType::Unsupported(type_name) => {
                 ColumnData::String(format!("<unsupported:{}>", type_name))
@@ -202,19 +209,22 @@ fn read_var_u64(reader: &mut impl Read) -> io::Result<u64> {
             return Ok(x);
         }
     }
-    
-    Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid VarUInt"))
+
+    Err(io::Error::new(
+        io::ErrorKind::InvalidData,
+        "Invalid VarUInt",
+    ))
 }
 
 fn skip_block_header(reader: &mut BufReader<File>) -> io::Result<()> {
     let mut marker = [0u8; 4];
     reader.read_exact(&mut marker)?;
-    
+
     for _ in 0..2 {
         let str_len = reader.read_u8()? as u64;
         reader.seek_relative(str_len as i64)?;
     }
-    
+
     Ok(())
 }
 
@@ -225,10 +235,15 @@ fn read_native_format(reader: &mut BufReader<File>) -> io::Result<Vec<Column>> {
 
     for _ in 0..num_columns {
         let name = read_string(reader)?;
-        let type_str = read_string(reader)?;        
+        let type_str = read_string(reader)?;
         let (column_type, type_params) = parse_column_type(&type_str);
         let data = read_column_data(reader, &column_type, num_rows)?;
-        columns.push(Column { name, type_: column_type, type_params, data });
+        columns.push(Column {
+            name,
+            type_: column_type,
+            type_params,
+            data,
+        });
     }
 
     loop {
@@ -266,57 +281,64 @@ impl VTab for ClickHouseVTab {
 
     unsafe fn bind(bind: &BindInfo, data: *mut ClickHouseBindData) -> Result<(), Box<dyn Error>> {
         let filepath = bind.get_parameter(0).to_string();
-        
+
         let file = File::open(&filepath)?;
         let mut reader = BufReader::with_capacity(64 * 1024, file);
         let columns = read_native_format(&mut reader)?;
-        
+
         for column in &columns {
             let logical_type = match &column.type_ {
                 ColumnType::String => LogicalTypeId::Varchar,
                 ColumnType::UInt8 => LogicalTypeId::Integer,
                 ColumnType::UInt64 => LogicalTypeId::Integer,
                 ColumnType::Int => LogicalTypeId::Integer,
-                ColumnType::Enum8(_) => LogicalTypeId::Varchar,  // Store enums as strings
+                ColumnType::Enum8(_) => LogicalTypeId::Varchar, // Store enums as strings
                 ColumnType::Unsupported(_) => LogicalTypeId::Varchar,
             };
             bind.add_result_column(&column.name, LogicalTypeHandle::from(logical_type));
         }
-        
+
         let filepath_cstring = CString::new(filepath)?;
         let raw_ptr = filepath_cstring.as_ptr() as *mut c_char;
-        
+
         unsafe {
             (*data).filepath = raw_ptr;
             (*data)._filepath_holder = Some(filepath_cstring);
         }
-        
+
         Ok(())
     }
 
     unsafe fn init(info: &InitInfo, data: *mut ClickHouseInitData) -> Result<(), Box<dyn Error>> {
         let bind_data = info.get_bind_data::<ClickHouseBindData>();
         let filepath = unsafe { CStr::from_ptr((*bind_data).filepath).to_str()? };
-    
+
         let file = File::open(filepath)?;
         let mut reader = BufReader::with_capacity(64 * 1024, file);
-    
+
         let read_result = read_native_format(&mut reader)?;
-        let total_rows = if read_result.is_empty() { 0 } else { read_result[0].data.len() };
-    
+        let total_rows = if read_result.is_empty() {
+            0
+        } else {
+            read_result[0].data.len()
+        };
+
         unsafe {
             std::ptr::write(&mut (*data).columns, read_result);
             (*data).current_row = 0;
             (*data).total_rows = total_rows;
             (*data).done = false;
         }
-    
+
         Ok(())
     }
 
-    unsafe fn func(func: &FunctionInfo, output: &mut DataChunkHandle) -> Result<(), Box<dyn Error>> {
+    unsafe fn func(
+        func: &FunctionInfo,
+        output: &mut DataChunkHandle,
+    ) -> Result<(), Box<dyn Error>> {
         let init_data = func.get_init_data::<ClickHouseInitData>();
-        
+
         unsafe {
             if (*init_data).done || (*init_data).current_row >= (*init_data).total_rows {
                 output.set_len(0);
@@ -325,7 +347,7 @@ impl VTab for ClickHouseVTab {
             }
 
             let batch_size = 1024.min((*init_data).total_rows - (*init_data).current_row);
-            
+
             for col_idx in 0..(*init_data).columns.len() {
                 let column = &(*init_data).columns[col_idx];
                 let mut vector = output.flat_vector(col_idx);
@@ -336,23 +358,22 @@ impl VTab for ClickHouseVTab {
                             let data_idx = (*init_data).current_row + row;
                             match &column.data[data_idx] {
                                 ColumnData::String(s) => {
-                                    let cleaned = s.replace('\0', "")
-                                                 .replace('\u{FFFD}', "");
+                                    let cleaned = s.replace('\0', "").replace('\u{FFFD}', "");
                                     vector.insert(row, cleaned.as_str())
-                                },
+                                }
                                 _ => vector.insert(row, "<invalid>"),
                             }
                         }
-                    },
+                    }
                     ColumnType::UInt8 => {
                         let slice = vector.as_mut_slice::<i32>();
                         for row in 0..batch_size {
-                        let data_idx = (*init_data).current_row + row;
+                            let data_idx = (*init_data).current_row + row;
                             if let ColumnData::UInt8(v) = column.data[data_idx] {
                                 slice[row] = v as i32;
                             }
                         }
-                    },
+                    }
                     ColumnType::Enum8(_) => {
                         for row in 0..batch_size {
                             let data_idx = (*init_data).current_row + row;
@@ -360,7 +381,7 @@ impl VTab for ClickHouseVTab {
                                 vector.insert(row, s.as_str());
                             }
                         }
-                    },
+                    }
 
                     ColumnType::UInt64 => {
                         let slice = vector.as_mut_slice::<i32>();
@@ -370,7 +391,7 @@ impl VTab for ClickHouseVTab {
                                 slice[row] = v as i32;
                             }
                         }
-                    },
+                    }
                     ColumnType::Int => {
                         let slice = vector.as_mut_slice::<i32>();
                         for row in 0..batch_size {
@@ -379,7 +400,7 @@ impl VTab for ClickHouseVTab {
                                 slice[row] = v;
                             }
                         }
-                    },
+                    }
                 }
             }
             (*init_data).current_row += batch_size;
