@@ -1,10 +1,11 @@
-use std::{error::Error, ffi::CString};
+use std::{error::Error, sync::Arc};
 use duckdb::{
     core::{DataChunkHandle, LogicalTypeHandle, LogicalTypeId, Inserter},
     vtab::{BindInfo, Free, FunctionInfo, InitInfo, VTab},
     Connection, Result,
 };
 use clickhouse_rs::{Pool, types::SqlType};
+use tokio::runtime::Runtime;
 
 #[repr(C)]
 struct ClickHouseScanBindData {
@@ -15,21 +16,16 @@ struct ClickHouseScanBindData {
 }
 
 impl Drop for ClickHouseScanBindData {
-    fn drop(&mut self) {
-        // Let Rust handle string cleanup
-    }
+    fn drop(&mut self) {}
 }
 
 impl Free for ClickHouseScanBindData {
-    fn free(&mut self) {
-        // println!("Freeing ClickHouseScanBindData...");
-        // Strings will be dropped automatically via Drop trait
-    }
+    fn free(&mut self) {}
 }
 
 #[repr(C)]
 struct ClickHouseScanInitData {
-    runtime: tokio::runtime::Runtime,
+    runtime: Option<Arc<Runtime>>,
     block_data: Option<Vec<Vec<String>>>,
     column_types: Option<Vec<LogicalTypeId>>,
     column_names: Option<Vec<String>>,
@@ -40,9 +36,8 @@ struct ClickHouseScanInitData {
 
 impl Drop for ClickHouseScanInitData {
     fn drop(&mut self) {
-        // Let Rust handle dropping the vectors safely
         self.done = true;
-        // Clear optional vectors by taking ownership
+        self.runtime.take();
         self.block_data.take();
         self.column_types.take();
         self.column_names.take();
@@ -51,10 +46,9 @@ impl Drop for ClickHouseScanInitData {
 
 impl Free for ClickHouseScanInitData {
     fn free(&mut self) {
-        // println!("Freeing ClickHouseScanInitData...");
-        // Mark as done and prevent further processing
         self.done = true;
         self.current_row = self.total_rows;
+        self.runtime.take();
     }
 }
 
@@ -70,7 +64,7 @@ fn map_clickhouse_type(sql_type: SqlType) -> LogicalTypeId {
         SqlType::Date => LogicalTypeId::Date,
         SqlType::DateTime(_) => LogicalTypeId::Timestamp,
         SqlType::Bool => LogicalTypeId::Boolean,
-        _ => LogicalTypeId::Varchar, // Default to varchar for unknown types
+        _ => LogicalTypeId::Varchar,
     }
 }
 
@@ -81,8 +75,6 @@ impl VTab for ClickHouseScanVTab {
     type BindData = ClickHouseScanBindData;
 
     unsafe fn bind(bind: &BindInfo, data: *mut Self::BindData) -> Result<(), Box<dyn Error>> {
-        // println!("Binding ClickHouseScanVTab...");
-
         if data.is_null() {
             return Err("Invalid bind data pointer".into());
         }
@@ -90,13 +82,16 @@ impl VTab for ClickHouseScanVTab {
         let query = bind.get_parameter(0).to_string();
         let url = bind.get_named_parameter("url")
             .map(|v| v.to_string())
-            .unwrap_or_else(|| std::env::var("CLICKHOUSE_URL").unwrap_or_else(|_| "tcp://localhost:9000".to_string()));
+            .unwrap_or_else(|| std::env::var("CLICKHOUSE_URL")
+                .unwrap_or_else(|_| "tcp://localhost:9000".to_string()));
         let user = bind.get_named_parameter("user")
             .map(|v| v.to_string())
-            .unwrap_or_else(|| std::env::var("CLICKHOUSE_USER").unwrap_or_else(|_| "default".to_string()));
+            .unwrap_or_else(|| std::env::var("CLICKHOUSE_USER")
+                .unwrap_or_else(|_| "default".to_string()));
         let password = bind.get_named_parameter("password")
             .map(|v| v.to_string())
-            .unwrap_or_else(|| std::env::var("CLICKHOUSE_PASSWORD").unwrap_or_default());
+            .unwrap_or_else(|| std::env::var("CLICKHOUSE_PASSWORD")
+                .unwrap_or_default());
 
         println!("Parameters - URL: {}, User: {}, Query: {}", url, user, query);
 
@@ -115,8 +110,6 @@ impl VTab for ClickHouseScanVTab {
     }
 
     unsafe fn init(info: &InitInfo, data: *mut Self::InitData) -> Result<(), Box<dyn Error>> {
-        // println!("Initializing ClickHouseScanVTab...");
-        
         if data.is_null() {
             return Err("Invalid init data pointer".into());
         }
@@ -126,14 +119,12 @@ impl VTab for ClickHouseScanVTab {
             return Err("Invalid bind data".into());
         }
 
-        let runtime = tokio::runtime::Runtime::new()?;
-        
+        let runtime = Arc::new(Runtime::new()?);
+        let runtime_clone = runtime.clone();
+
         let result = runtime.block_on(async {
-            // println!("Creating connection pool");
             let pool = Pool::new((*bind_data).url.clone());
-            // println!("Getting client handle");
             let mut client = pool.get_handle().await?;
-            // println!("Executing query: {}", (*bind_data).query);
             let block = client.query(&(*bind_data).query).fetch_all().await?;
             
             let columns = block.columns();
@@ -141,7 +132,6 @@ impl VTab for ClickHouseScanVTab {
             let mut types = Vec::new();
             let mut data: Vec<Vec<String>> = Vec::new();
 
-            // Initialize data vectors for each column
             for col in columns {
                 names.push(col.name().to_string());
                 types.push(map_clickhouse_type(col.sql_type()));
@@ -206,9 +196,8 @@ impl VTab for ClickHouseScanVTab {
         let (block_data, column_names, column_types, total_rows) = result;
 
         unsafe {
-            // println!("Storing result data");
             (*data) = ClickHouseScanInitData {
-                runtime,
+                runtime: Some(runtime_clone),
                 block_data: Some(block_data),
                 column_types: Some(column_types),
                 column_names: Some(column_names),
@@ -222,7 +211,6 @@ impl VTab for ClickHouseScanVTab {
     }
 
     unsafe fn func(func: &FunctionInfo, output: &mut DataChunkHandle) -> Result<(), Box<dyn Error>> {
-        // println!("Executing ClickHouseScanVTab function...");
         let init_data = func.get_init_data::<ClickHouseScanInitData>();
         
         if init_data.is_null() {
@@ -236,7 +224,6 @@ impl VTab for ClickHouseScanVTab {
                 return Ok(());
             }
 
-            // Get references to the Option vectors
             let block_data = match (*init_data).block_data.as_ref() {
                 Some(data) => data,
                 None => return Err("Block data is not available".into()),
@@ -261,14 +248,15 @@ impl VTab for ClickHouseScanVTab {
                             if let Ok(val) = block_data[col_idx][row_idx].parse::<i32>() {
                                 slice[row_offset] = val;
                             } else {
-                                slice[row_offset] = 0; // Default value for parse failure
+                                slice[row_offset] = 0;
                             }
                         }
                     },
                     _ => {
                         for row_offset in 0..batch_size {
                             let row_idx = (*init_data).current_row + row_offset;
-                            vector.insert(row_offset, block_data[col_idx][row_idx].as_str());
+                            let val = block_data[col_idx][row_idx].as_str();
+                            Inserter::insert(&mut vector, row_offset, val);
                         }
                     }
                 }
@@ -286,7 +274,6 @@ impl VTab for ClickHouseScanVTab {
 }
 
 pub fn register_clickhouse_scan(con: &Connection) -> Result<(), Box<dyn Error>> {
-    // println!("Registering ClickHouseScanVTab...");
     con.register_table_function::<ClickHouseScanVTab>("clickhouse_scan")?;
     Ok(())
 }
