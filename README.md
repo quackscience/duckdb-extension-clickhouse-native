@@ -11,7 +11,7 @@ LOAD chsql_native;
 ```
 
 ## 🤖 Native Client
-The extension provides an experimental clickhouse native client: `clickhouse_reader`
+The extension provides an experimental clickhouse native client: `clickhouse_scan`
 ### 🏁 Settings
 ```bash
 # Local Setup, Insecure
