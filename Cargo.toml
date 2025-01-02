@@ -30,3 +30,4 @@ tokio = { version = "1.42.0", features = ["rt", "rt-multi-thread"] }
 serde = "1.0.217"
 clickhouse-rs = { version = "1.1.0-alpha.1", features = ["tokio_io", "tls"] }
 chrono = "0.4.39"
+openssl = { version = "0.10", features = ["vendored"] }
