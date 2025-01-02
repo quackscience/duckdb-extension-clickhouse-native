@@ -1,4 +1,6 @@
-<img src="https://github.com/user-attachments/assets/46a5c546-7e9b-42c7-87f4-bc8defe674e0" width=250 />
+<a href="https://community-extensions.duckdb.org/extensions/chsql.html" target="_blank">
+<img src="https://github.com/user-attachments/assets/9003897d-db6f-4a79-9443-9b72766b511b" width=200>
+</a>
 
 # DuckDB Clickhouse Native Extension for [chsql](https://github.com/quackscience/duckdb-extension-clickhouse-sql)
 Experimental ClickHouse Native Client and Native file reader for DuckDB chsql
