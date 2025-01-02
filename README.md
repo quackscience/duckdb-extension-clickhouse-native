@@ -14,9 +14,10 @@ LOAD chsql_native;
 The extension provides an experimental clickhouse native client: `clickhouse_reader`
 ### 🏁 Settings
 ```bash
+# Local Setup, Insecure
 export CLICKHOUSE_URL="tcp://localhost:9000"
-export CLICKHOUSE_USER="default"
-export CLICKHOUSE_PASSWORD=""
+# Remote Setup, Secure
+export CLICKHOUSE_URL="tcp://user:pass@remote:9440/?secure=true&skip_verify=true"
 ```
 ### ✏️ Usage
 ```sql
@@ -130,6 +131,7 @@ sys	0m0.043s
   - [ ] Compression support
 - [x] Basic Native Client
   - [x] clickhouse-rs binding
+  - [x] TLS Support
   - [x] Type Mapping WIP
     - [x] Strings
     - [x] Integers
