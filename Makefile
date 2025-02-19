@@ -2,6 +2,10 @@
 
 PROJ_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 
+# Set to 1 to enable Unstable API (binaries will only work on TARGET_DUCKDB_VERSION, forwards compatibility will be broken)
+# Note: currently extension-template-rs requires this, as duckdb-rs relies on unstable C API functionality
+USE_UNSTABLE_C_API=1
+
 # TODO: these values are currently duplicated in lib.rs. There's a PR open in duckdb-rs that fixes this
 EXTENSION_NAME=chsql_native
 MINIMUM_DUCKDB_VERSION=v1.2.0
