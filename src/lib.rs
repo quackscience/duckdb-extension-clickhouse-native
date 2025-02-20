@@ -201,7 +201,7 @@ fn read_native_format(reader: &mut BufReader<File>) -> io::Result<Vec<Column>> {
     for _ in 0..num_columns {
         let name = read_string(reader)?;
         let type_str = read_string(reader)?;
-        let (column_type, type_params) = parse_column_type(&type_str);
+        let (column_type, _type_params) = parse_column_type(&type_str);
         let data = read_column_data(reader, &column_type, num_rows)?;
         columns.push(Column {
             name,
