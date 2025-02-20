@@ -414,7 +414,9 @@ impl VTab for ClickHouseVTab {
     }
 }
 
-#[duckdb_entrypoint_c_api(ext_name = "chsql_native", min_duckdb_version = "v1.2.0")]
+const EXTENSION_NAME: &str = env!("CARGO_PKG_NAME");
+
+#[duckdb_entrypoint_c_api()]
 pub unsafe fn extension_entrypoint(con: Connection) -> Result<(), Box<dyn Error>> {
     con.register_table_function::<ClickHouseVTab>("clickhouse_native")?;
     // Register new table function
