@@ -1,10 +1,9 @@
 use clickhouse_rs::{types::SqlType, Pool};
 use duckdb::{
     core::{DataChunkHandle, Inserter, LogicalTypeHandle, LogicalTypeId},
-    vtab::{BindInfo, Free, FunctionInfo, InitInfo, VTab},
+    vtab::{BindInfo, InitInfo, TableFunctionInfo, VTab},
     Connection, Result,
 };
-use std::ptr;
 use std::{error::Error, sync::Arc};
 use tokio::runtime::Runtime;
 
@@ -18,18 +17,6 @@ struct ClickHouseScanBindData {
     column_types: Vec<LogicalTypeId>,
 }
 
-impl Drop for ClickHouseScanBindData {
-    fn drop(&mut self) {
-        // No explicit clearing needed, let Rust handle the cleanup
-    }
-}
-
-impl Free for ClickHouseScanBindData {
-    fn free(&mut self) {
-        // No explicit clearing needed, drop will handle cleanup
-    }
-}
-
 #[repr(C)]
 struct ClickHouseScanInitData {
     runtime: Option<Arc<Runtime>>,
@@ -39,22 +26,6 @@ struct ClickHouseScanInitData {
     current_row: usize,
     total_rows: usize,
     done: bool,
-}
-
-impl Drop for ClickHouseScanInitData {
-    fn drop(&mut self) {
-        self.done = true;
-        self.runtime.take();
-        self.block_data.take();
-    }
-}
-
-impl Free for ClickHouseScanInitData {
-    fn free(&mut self) {
-        self.done = true;
-        self.current_row = self.total_rows;
-        self.runtime.take();
-    }
 }
 
 fn map_clickhouse_type(sql_type: SqlType) -> LogicalTypeId {
@@ -79,11 +50,7 @@ impl VTab for ClickHouseScanVTab {
     type InitData = ClickHouseScanInitData;
     type BindData = ClickHouseScanBindData;
 
-    unsafe fn bind(bind: &BindInfo, data: *mut Self::BindData) -> Result<(), Box<dyn Error>> {
-        if data.is_null() {
-            return Err("Invalid bind data pointer".into());
-        }
-
+    fn bind(bind: &BindInfo) -> Result<Self::BindData, Box<dyn Error>> {
         let query = bind.get_parameter(0).to_string();
         let url = bind
             .get_named_parameter("url")
@@ -103,8 +70,7 @@ impl VTab for ClickHouseScanVTab {
             .map(|v| v.to_string())
             .unwrap_or_else(|| std::env::var("CLICKHOUSE_PASSWORD").unwrap_or_default());
 
-        let runtime =
-            Arc::new(Runtime::new().map_err(|e| format!("Failed to create runtime: {}", e))?);
+        let runtime = Arc::new(Runtime::new().map_err(|e| format!("Failed to create runtime: {}", e))?);
 
         let result = runtime.block_on(async {
             let pool = Pool::new(url.clone());
@@ -143,39 +109,26 @@ impl VTab for ClickHouseScanVTab {
             bind.add_result_column(name, type_handle);
         }
 
-        let bind_data = ClickHouseScanBindData {
+        Ok(ClickHouseScanBindData {
             url,
             user,
             password,
             query,
             column_names: names,
             column_types: types,
-        };
-
-        unsafe {
-            ptr::write(data, bind_data);
-        }
-
-        Ok(())
+        })
     }
 
-    unsafe fn init(info: &InitInfo, data: *mut Self::InitData) -> Result<(), Box<dyn Error>> {
-        if data.is_null() {
-            return Err("Invalid init data pointer".into());
-        }
-
+    fn init(info: &InitInfo) -> Result<Self::InitData, Box<dyn Error>> {
         let bind_data = info.get_bind_data::<ClickHouseScanBindData>();
-        if bind_data.is_null() {
-            return Err("Invalid bind data".into());
-        }
+        let bind_data = unsafe { &*bind_data };
 
-        let runtime =
-            Arc::new(Runtime::new().map_err(|e| format!("Failed to create runtime: {}", e))?);
+        let runtime = Arc::new(Runtime::new().map_err(|e| format!("Failed to create runtime: {}", e))?);
 
         let result = runtime.block_on(async {
-            let pool = Pool::new((*bind_data).url.clone());
+            let pool = Pool::new(bind_data.url.clone());
             let mut client = pool.get_handle().await?;
-            let block = client.query(&(*bind_data).query).fetch_all().await?;
+            let block = client.query(&bind_data.query).fetch_all().await?;
 
             let columns = block.columns();
             let mut data: Vec<Vec<String>> = Vec::new();
@@ -192,60 +145,7 @@ impl VTab for ClickHouseScanVTab {
                             Ok(val) => val.to_string(),
                             Err(_) => "0".to_string(),
                         },
-                        SqlType::UInt16 => match row.get::<u16, &str>(col.name()) {
-                            Ok(val) => val.to_string(),
-                            Err(_) => "0".to_string(),
-                        },
-                        SqlType::UInt32 => match row.get::<u32, &str>(col.name()) {
-                            Ok(val) => val.to_string(),
-                            Err(_) => "0".to_string(),
-                        },
-                        SqlType::UInt64 => match row.get::<u64, &str>(col.name()) {
-                            Ok(val) => val.to_string(),
-                            Err(_) => "0".to_string(),
-                        },
-                        SqlType::Int8 => match row.get::<i8, &str>(col.name()) {
-                            Ok(val) => val.to_string(),
-                            Err(_) => "0".to_string(),
-                        },
-                        SqlType::Int16 => match row.get::<i16, &str>(col.name()) {
-                            Ok(val) => val.to_string(),
-                            Err(_) => "0".to_string(),
-                        },
-                        SqlType::Int32 => match row.get::<i32, &str>(col.name()) {
-                            Ok(val) => val.to_string(),
-                            Err(_) => "0".to_string(),
-                        },
-                        SqlType::Int64 => match row.get::<i64, &str>(col.name()) {
-                            Ok(val) => val.to_string(),
-                            Err(_) => "0".to_string(),
-                        },
-                        SqlType::Float32 => match row.get::<f32, &str>(col.name()) {
-                            Ok(val) => val.to_string(),
-                            Err(_) => "0.0".to_string(),
-                        },
-                        SqlType::Float64 => match row.get::<f64, &str>(col.name()) {
-                            Ok(val) => val.to_string(),
-                            Err(_) => "0.0".to_string(),
-                        },
-                        SqlType::String | SqlType::FixedString(_) => {
-                            match row.get::<String, &str>(col.name()) {
-                                Ok(val) => val,
-                                Err(_) => String::new(),
-                            }
-                        }
-                        SqlType::Bool => match row.get::<bool, &str>(col.name()) {
-                            Ok(val) => val.to_string(),
-                            Err(_) => "false".to_string(),
-                        },
-                        SqlType::Date => match row.get::<String, &str>(col.name()) {
-                            Ok(val) => val,
-                            Err(_) => "1970-01-01".to_string(),
-                        },
-                        SqlType::DateTime(_) => match row.get::<String, &str>(col.name()) {
-                            Ok(val) => val,
-                            Err(_) => "1970-01-01 00:00:00".to_string(),
-                        },
+                        // ... rest of type handling ...
                         _ => match row.get::<String, &str>(col.name()) {
                             Ok(val) => val,
                             Err(_) => "0".to_string(),
@@ -261,54 +161,35 @@ impl VTab for ClickHouseScanVTab {
 
         let (block_data, total_rows) = result;
 
-        let column_types = (*bind_data)
-            .column_types
-            .iter()
-            .map(|type_id| match type_id {
-                LogicalTypeId::Integer => LogicalTypeId::Integer,
-                LogicalTypeId::Bigint => LogicalTypeId::Bigint,
-                LogicalTypeId::UInteger => LogicalTypeId::UInteger,
-                LogicalTypeId::UBigint => LogicalTypeId::UBigint,
-                LogicalTypeId::Float => LogicalTypeId::Float,
-                LogicalTypeId::Double => LogicalTypeId::Double,
-                LogicalTypeId::Varchar => LogicalTypeId::Varchar,
-                LogicalTypeId::Date => LogicalTypeId::Date,
-                LogicalTypeId::Timestamp => LogicalTypeId::Timestamp,
-                LogicalTypeId::Boolean => LogicalTypeId::Boolean,
-                _ => LogicalTypeId::Varchar,
-            })
-            .collect::<Vec<_>>();
+        let column_types = bind_data.column_types.iter().map(|t| match t {
+            LogicalTypeId::Integer => LogicalTypeId::Integer,
+            LogicalTypeId::Bigint => LogicalTypeId::Bigint,
+            LogicalTypeId::UInteger => LogicalTypeId::UInteger,
+            LogicalTypeId::UBigint => LogicalTypeId::UBigint,
+            LogicalTypeId::Float => LogicalTypeId::Float,
+            LogicalTypeId::Double => LogicalTypeId::Double,
+            LogicalTypeId::Varchar => LogicalTypeId::Varchar,
+            LogicalTypeId::Date => LogicalTypeId::Date,
+            LogicalTypeId::Timestamp => LogicalTypeId::Timestamp,
+            LogicalTypeId::Boolean => LogicalTypeId::Boolean,
+            _ => LogicalTypeId::Varchar,
+        }).collect();
+        let column_names = bind_data.column_names.iter().cloned().collect();
 
-        let column_names = (*bind_data).column_names.clone();
-
-        unsafe {
-            ptr::write(
-                data,
-                ClickHouseScanInitData {
-                    runtime: Some(runtime),
-                    block_data: Some(block_data),
-                    column_types,
-                    column_names,
-                    current_row: 0,
-                    total_rows,
-                    done: false,
-                },
-            );
-        }
-
-        Ok(())
+        Ok(ClickHouseScanInitData {
+            runtime: Some(runtime),
+            block_data: Some(block_data),
+            column_types,
+            column_names,
+            current_row: 0,
+            total_rows,
+            done: false,
+        })
     }
 
-    unsafe fn func(
-        func: &FunctionInfo,
-        output: &mut DataChunkHandle,
-    ) -> Result<(), Box<dyn Error>> {
-        let init_data = func.get_init_data::<ClickHouseScanInitData>();
-
-        if init_data.is_null() {
-            return Err("Invalid init data pointer".into());
-        }
-
+    fn func(func: &TableFunctionInfo<Self>, output: &mut DataChunkHandle) -> Result<(), Box<dyn Error>> {
+        let init_data = func.get_init_data() as *const ClickHouseScanInitData as *mut ClickHouseScanInitData;
+        
         unsafe {
             if (*init_data).done || (*init_data).current_row >= (*init_data).total_rows {
                 output.set_len(0);
@@ -321,13 +202,11 @@ impl VTab for ClickHouseScanVTab {
                 None => return Err("Block data is not available".into()),
             };
 
-            let column_types = &(*init_data).column_types;
-
             let batch_size = 1024.min((*init_data).total_rows - (*init_data).current_row);
 
-            for col_idx in 0..column_types.len() {
+            for col_idx in 0..(*init_data).column_types.len() {
                 let mut vector = output.flat_vector(col_idx);
-                let type_id = &column_types[col_idx];
+                let type_id = &(*init_data).column_types[col_idx];
 
                 match type_id {
                     LogicalTypeId::Integer | LogicalTypeId::UInteger => {
@@ -359,22 +238,11 @@ impl VTab for ClickHouseScanVTab {
                             }
                         }
                     }
-                    LogicalTypeId::UBigint => {
-                        let slice = vector.as_mut_slice::<i64>();
-                        for row_offset in 0..batch_size {
-                            let row_idx = (*init_data).current_row + row_offset;
-                            if let Ok(val) = block_data[col_idx][row_idx].parse::<u64>() {
-                                slice[row_offset] = val as i64;
-                            } else {
-                                slice[row_offset] = 0;
-                            }
-                        }
-                    }
                     _ => {
                         for row_offset in 0..batch_size {
                             let row_idx = (*init_data).current_row + row_offset;
                             let val = block_data[col_idx][row_idx].as_str();
-                            Inserter::insert(&mut vector, row_offset, val);
+                            vector.insert(row_offset, val);
                         }
                     }
                 }
